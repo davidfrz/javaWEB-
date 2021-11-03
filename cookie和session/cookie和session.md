@@ -943,3 +943,99 @@ Session信息是存放在server端，但session id是存放在client cookie的�
  
 
 Cookie是完全保持在客户端的如：IE firefox 当客户端禁止cookie时将不能再使用
+
+
+
+## Session的钝化与活化
+
+### 钝化
+
+当服务器正常关闭时,还存活着的session(在设置时间内没有销毁) 会随着服务器的关闭被以文件(“SESSIONS.ser”)的形式存储在tomcat 的work 目录下,这个过程叫做Session 的钝化。（服务器关了，浏览器没关）
+
+### 活化
+
+当服务器再次正常开启时,服务器会找到之前的“SESSIONS.ser” 文件，从中恢复之前保存起来的Session 对象，这个过程叫做Session的活化。
+
+### 注意事项
+
+ 1）想要随着Session 被钝化、活化的对象它的类必须实现Serializable 接口，还有要注意的是只有在服务器正常关闭的条件下，还未超时的Session 才会被钝化成文件。当Session 超时、调用invalidate 方法或者服务器在非正常情况下关闭时，Session 都不会被钝化，因此也就不存在活化。 
+      2）在被钝化成“SESSIONS.ser” 文件时，不会因为超过Session 过期时间而消失，这个文件会一直存在，等到下一次服务器开启时消失。 
+      3）当多个Session 被钝化时，这些被钝化的Session 都被保存在一个文件中，并不会为每个Session 都建立一个文件。
+![](img/c4.png)
+
+### 演示
+
+定义两个Servlet ，在一个Servlet 中将“username” 保存在Session 中，另一个Servlet 中获取到该“username”，输出到浏览器。
+
+SessionServlet1
+
+import java.io.IOException;
+import javax.servlet.ServletException;
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
+@WebServlet("/session1")
+public class SessionServlet1 extends HttpServlet {
+    private static final long serialVersionUID = 1L;
+
+
+    protected void doGet(HttpServletRequest request, HttpServletResponse response) 
+            throws ServletException, IOException {
+        //将username = zhangsan 保存在Session 中
+        request.getSession().setAttribute("username", "zhangsan");
+    }
+    
+    protected void doPost(HttpServletRequest request, HttpServletResponse response) 
+            throws ServletException, IOException {
+        doGet(request, response);
+    }
+
+}
+
+SessionServlet12
+
+import java.io.IOException;
+import javax.servlet.ServletException;
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
+@WebServlet("/session2")
+public class SessionServlet2 extends HttpServlet {
+    private static final long serialVersionUID = 1L;
+
+    protected void doGet(HttpServletRequest request, HttpServletResponse response) 
+            throws ServletException, IOException {
+        //获取到username 输出到浏览器
+        String username = (String) request.getSession().getAttribute("username");
+        response.getWriter().write(username);
+    }
+    
+    protected void doPost(HttpServletRequest request, HttpServletResponse response) 
+            throws ServletException, IOException {
+        doGet(request, response);
+    }
+
+}
+①：首先访问“session1”，将数据存储到Session 域中，接着再访问“session2”，可以获取到“username”的值，如下图 
+
+![](img/c5.png)
+
+②：在Session 时间还未过期的时间内，让服务器正常关闭，在Tomcat 中的work 目录下，会多出一个“SESSIONS.ser” 文件，里面存储着还未过期的Session 信息，这也就说明Session 被钝化了，以文件的形式保存在本地磁盘中。
+
+![](img/c6.png)
+
+③：当服务器再次启动时，该配置文件会消失，当我们再次访问“session2”(不再访问“session1”的前提下)，发现仍然可以获取到“username”的值，这时Session 就从被钝化的文件中活化。 
+
+![](img/c7.png)
+
+![](img/c8.png)
+
+④：当服务器非正常情况下关闭时(超时、调用invalidate 方法)，Session 不会被钝化，所以在服务器再次启动时，去访问“session2”，会因为没有获取到Session 报空指针异常(下面的演示是服务器非正常情况下关闭)。
+
+![](img/c9.png)
+
+注：由于String 类本身已经实现了序列化接口“java.io.Serializable”，因此会被钝化成文件。如果我们想要自己定义的“POJO”类也可以钝化与活化，那么也必须要实现“java.io.Serializable”接口。这也是为什么我们建议将“POJO”类都实现序列化接口的一个原因。
